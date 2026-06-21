@@ -1,0 +1,5 @@
+// Runs before any module (and thus before ConfigModule's env validation) loads.
+process.env.ENFORCE_GATEWAY = 'true';
+process.env.APISIX_GATEWAY_SECRET = 'topsecret';
+process.env.DATABASE_URL = 'postgresql://x:x@localhost:5432/x';
+process.env.NODE_ENV = 'test';

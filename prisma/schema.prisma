@@ -1,0 +1,73 @@
+// Cosmos Pay — payments microservice
+// Independent datastore from the developer platform. This service only ever
+// receives traffic that has already been authenticated by APISIX (key-auth),
+// so it trusts the consumer identity forwarded by the gateway and keys its
+// own records to that consumer.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// A consumer mirrors the APISIX consumer that authenticated the request.
+// We do not store credentials here — only the gateway-provided identity, so
+// payments can be attributed and listed per consumer.
+model Consumer {
+  id             String   @id @default(cuid())
+  // The APISIX consumer username, e.g. `cosmos_<userId>` (X-Consumer-Username).
+  apisixUsername String   @unique
+  // The credential id that authenticated, e.g. `cosmos_<uuid>` (X-Credential-Identifier).
+  credentialId   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  paymentIntents PaymentIntent[]
+
+  @@map("consumer")
+}
+
+// Lifecycle of a Stellar payment intent. Kept for traceability — the unsigned
+// transaction (xdr/uri) is persisted at creation and the status is advanced as
+// the customer signs/submits it on the network.
+enum PaymentIntentStatus {
+  PENDING // created, unsigned tx handed to the customer
+  SUBMITTED // a signed tx hash was reported back to us
+  SUCCEEDED // confirmed on the Stellar network
+  FAILED // rejected / errored on the network
+  CANCELLED // abandoned by the merchant/customer
+  EXPIRED // tx time bounds elapsed before submission
+}
+
+model PaymentIntent {
+  id          String              @id @default(cuid())
+  consumerId  String
+  consumer    Consumer            @relation(fields: [consumerId], references: [id], onDelete: Cascade)
+
+  // Stellar payment details (XLM native asset).
+  source      String // payer account (G...)
+  destination String // payee account (G...)
+  amount      String // decimal string, e.g. "25.5"
+  asset       String              @default("native")
+  memo        String? // numeric memo id, when provided
+  network     String // 'public' | 'testnet'
+
+  status      PaymentIntentStatus @default(PENDING)
+
+  // The unsigned transaction artifacts (QR is derived from `uri` on read).
+  xdr         String
+  uri         String
+  // Set once a signed transaction is submitted/confirmed.
+  txHash      String?             @unique
+  reference   String? // optional merchant reference
+
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([consumerId])
+  @@index([status])
+  @@map("payment_intent")
+}

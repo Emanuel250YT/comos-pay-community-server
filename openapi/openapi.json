@@ -1,0 +1,429 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health/liveness": {
+      "get": {
+        "operationId": "HealthController_liveness_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/readiness": {
+      "get": {
+        "operationId": "HealthController_readiness_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Readiness probe (checks the database)",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/payment-intents": {
+      "post": {
+        "operationId": "PaymentIntentsController_create_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentIntentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "Create a Stellar payment intent (persisted; returns XDR + URI + QR)",
+        "tags": [
+          "payment-intents"
+        ]
+      },
+      "get": {
+        "operationId": "PaymentIntentsController_findAll_v1",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "SUBMITTED",
+                "SUCCEEDED",
+                "FAILED",
+                "CANCELLED",
+                "EXPIRED"
+              ]
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List the consumer's payment intents",
+        "tags": [
+          "payment-intents"
+        ]
+      }
+    },
+    "/api/v1/payment-intents/{id}": {
+      "get": {
+        "operationId": "PaymentIntentsController_findOne_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Get a payment intent by id",
+        "tags": [
+          "payment-intents"
+        ]
+      },
+      "patch": {
+        "operationId": "PaymentIntentsController_update_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentIntentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Update a payment intent (status / txHash / reference)",
+        "tags": [
+          "payment-intents"
+        ]
+      },
+      "delete": {
+        "operationId": "PaymentIntentsController_remove_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Delete a payment intent",
+        "tags": [
+          "payment-intents"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Cosmos Pay — Payments API",
+    "description": "Payments microservice (Stellar payment intents). All endpoints require traffic to arrive through the APISIX gateway: a valid `X-Gateway-Secret` header plus an authenticated consumer (`X-Consumer-Username`). Paths already include the global prefix and version (`/api/v1/...`).",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "gateway-secret": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Gateway-Secret"
+      },
+      "consumer": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Consumer-Username"
+      }
+    },
+    "schemas": {
+      "CreatePaymentIntentDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Customer's Stellar account (the payer).",
+            "example": "Greally…56charpublickey"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Merchant's Stellar account (the payee).",
+            "example": "GASMERCHANT…56charpublickey"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Amount of XLM as a decimal string (max 7 decimal places).",
+            "example": "25.5"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Numeric memo id (uint64 as a string), e.g. an order number.",
+            "example": "123456789"
+          }
+        },
+        "required": [
+          "source",
+          "destination",
+          "amount"
+        ]
+      },
+      "UpdatePaymentIntentDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SUBMITTED",
+              "SUCCEEDED",
+              "FAILED",
+              "CANCELLED",
+              "EXPIRED"
+            ]
+          },
+          "txHash": {
+            "type": "string",
+            "description": "Stellar transaction hash once the signed tx is submitted.",
+            "example": "3389e9f0..."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Merchant reference.",
+            "example": "order_1234"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "gateway-secret": []
+    },
+    {
+      "consumer": []
+    }
+  ]
+}
