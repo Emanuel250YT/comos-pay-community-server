@@ -1549,6 +1549,12 @@ components:
         name:
           type: string
           example: Acme Inc.
+        alias:
+          type: string
+          example: Acme — billing
+        note:
+          type: string
+          example: VIP customer, net-30 terms.
         email:
           type: string
           example: billing@acme.com
@@ -1567,6 +1573,12 @@ components:
         name:
           type: string
           example: Acme Inc.
+        alias:
+          type: string
+          example: Acme — billing
+        note:
+          type: string
+          example: VIP customer, net-30 terms.
         email:
           type: string
           example: billing@acme.com

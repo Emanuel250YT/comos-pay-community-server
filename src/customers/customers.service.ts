@@ -25,6 +25,8 @@ export class CustomersService {
       data: {
         consumerId: local.id,
         name: dto.name,
+        alias: dto.alias ?? null,
+        note: dto.note ?? null,
         email: dto.email ?? null,
         account: dto.account ?? null,
         reference: dto.reference ?? null,
@@ -88,6 +90,8 @@ export class CustomersService {
       where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.alias !== undefined ? { alias: dto.alias } : {}),
+        ...(dto.note !== undefined ? { note: dto.note } : {}),
         ...(dto.email !== undefined ? { email: dto.email } : {}),
         ...(dto.account !== undefined ? { account: dto.account } : {}),
         ...(dto.reference !== undefined ? { reference: dto.reference } : {}),

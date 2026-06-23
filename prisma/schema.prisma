@@ -41,9 +41,12 @@ model Customer {
   consumer    Consumer @relation(fields: [consumerId], references: [id], onDelete: Cascade)
 
   name        String
+  // A friendly display alias the merchant can assign (e.g. "Acme — billing").
+  alias       String?
   email       String?
   // Optional Stellar account to associate the customer with on-chain activity.
   account     String?
+  note        String? // free-form merchant note
   reference   String? // merchant reference / external id
 
   createdAt   DateTime @default(now())
@@ -216,6 +219,10 @@ model PaymentIntent {
   // Set once a signed transaction is submitted/confirmed.
   txHash      String?             @unique
   reference   String? // optional merchant reference
+
+  // Lifetime: an unpaid intent past this instant is auto-finalized to EXPIRED by
+  // the observer. Set at creation from the configured TTL.
+  expiresAt   DateTime?
 
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt

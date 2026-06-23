@@ -15,6 +15,18 @@ export class CreateCustomerDto {
   @MaxLength(120)
   name!: string;
 
+  @ApiPropertyOptional({ example: 'Acme — billing' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  alias?: string;
+
+  @ApiPropertyOptional({ example: 'VIP customer, net-30 terms.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+
   @ApiPropertyOptional({ example: 'billing@acme.com' })
   @IsOptional()
   @IsEmail()

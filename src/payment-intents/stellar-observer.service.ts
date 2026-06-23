@@ -59,6 +59,27 @@ export class StellarObserverService implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     try {
       const { batchSize } = this.config.get('observer', { infer: true });
+
+      // 1. Expire unpaid intents past their lifetime.
+      const expired = await this.prisma.paymentIntent.findMany({
+        where: {
+          status: { in: ['PENDING', 'SUBMITTED'] },
+          expiresAt: { not: null, lt: new Date() },
+        },
+        include: { consumer: true },
+        take: batchSize,
+      });
+      for (const intent of expired) {
+        await this.paymentIntents
+          .markExpired(intent.id, intent.consumer.apisixUsername)
+          .catch((err) =>
+            this.logger.error(
+              `Expire failed for intent ${intent.id}: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
+      }
+
+      // 2. Reconcile still-pending intents against the chain.
       const pending = await this.prisma.paymentIntent.findMany({
         where: { status: 'PENDING' },
         include: { consumer: true },

@@ -52,6 +52,9 @@ export class LoggingInterceptor implements NestInterceptor {
   ): void {
     const path = url.split('?')[0];
     if (path.startsWith('/v1/health') || path.startsWith('/docs')) return;
+    // Skip the dashboard's own management-console traffic — the API log should only
+    // show real API-key usage, not internal calls.
+    if (request.headers['x-cosmos-internal']) return;
 
     const ua = request.headers['user-agent'];
     this.prisma.requestLog

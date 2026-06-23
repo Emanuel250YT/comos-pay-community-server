@@ -31,6 +31,10 @@ export interface AppConfig {
     intervalMs: number;
     batchSize: number;
   };
+  paymentIntents: {
+    // Lifetime of a payment intent; unpaid intents past this are marked EXPIRED.
+    ttlSeconds: number;
+  };
   webhooks: {
     timeoutMs: number;
     maxAttempts: number;
@@ -89,6 +93,9 @@ export default (): AppConfig => ({
     enabled: (process.env.OBSERVER_ENABLED ?? 'true').toLowerCase() !== 'false',
     intervalMs: parseInt(process.env.OBSERVER_INTERVAL_MS ?? '15000', 10),
     batchSize: parseInt(process.env.OBSERVER_BATCH_SIZE ?? '50', 10),
+  },
+  paymentIntents: {
+    ttlSeconds: parseInt(process.env.PAYMENT_INTENT_TTL_SECONDS ?? '3600', 10),
   },
   webhooks: {
     timeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS ?? '5000', 10),

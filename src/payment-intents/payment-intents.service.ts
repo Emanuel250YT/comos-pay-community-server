@@ -301,8 +301,14 @@ export class PaymentIntentsService {
   private async persist(
     data: Parameters<PrismaService['paymentIntent']['create']>[0]['data'],
   ): Promise<PaymentIntent | null> {
+    // Stamp the lifetime so the observer can expire unpaid intents.
+    const ttlSeconds = this.config.get('paymentIntents', { infer: true }).ttlSeconds;
+    const withTtl = {
+      ...data,
+      expiresAt: data.expiresAt ?? new Date(Date.now() + ttlSeconds * 1000),
+    };
     try {
-      return await this.prisma.paymentIntent.create({ data });
+      return await this.prisma.paymentIntent.create({ data: withTtl });
     } catch (err) {
       if (this.isUniqueViolation(err)) return null;
       throw err;
@@ -534,6 +540,21 @@ export class PaymentIntentsService {
       data: { status: 'FAILED', ...(txHash ? { txHash } : {}) },
     });
     this.emit(consumerUsername, 'PAYMENT_INTENT_FAILED', updated);
+    return updated;
+  }
+
+  /** Finalizes an unpaid, past-lifetime intent as EXPIRED. Reused by the observer. */
+  async markExpired(
+    intentId: string,
+    consumerUsername: string,
+  ): Promise<PaymentIntent> {
+    const updated = await this.prisma.paymentIntent.update({
+      where: { id: intentId },
+      data: { status: 'EXPIRED' },
+    });
+    this.logger.log(`Payment intent ${intentId} expired (past its lifetime)`);
+    // No dedicated EXPIRED event type — surfaced as a generic update.
+    this.emit(consumerUsername, 'PAYMENT_INTENT_UPDATED', updated);
     return updated;
   }
 
