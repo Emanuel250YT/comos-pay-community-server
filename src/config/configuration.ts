@@ -16,7 +16,6 @@ export interface AppConfig {
     environmentHeader: string;
     roleHeader: string;
     permissionsHeader: string;
-    enforce: boolean;
   };
   stellar: {
     // Fallback network when the API key environment is not forwarded
@@ -72,7 +71,6 @@ export default (): AppConfig => ({
     permissionsHeader: (
       process.env.APISIX_PERMISSIONS_HEADER ?? 'x-consumer-permissions'
     ).toLowerCase(),
-    enforce: (process.env.ENFORCE_GATEWAY ?? 'true').toLowerCase() !== 'false',
   },
   stellar: {
     network:

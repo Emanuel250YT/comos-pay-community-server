@@ -12,8 +12,8 @@ import {
 
 /**
  * Schema used by ConfigModule to fail fast at boot if the environment is
- * misconfigured. A missing APISIX_GATEWAY_SECRET while enforcement is on is a
- * hard error — the whole point of the service is to only trust the gateway.
+ * misconfigured. APISIX_GATEWAY_SECRET is always required — the whole point of
+ * the service is to only trust requests carrying the secret the gateway injects.
  */
 class EnvironmentVariables {
   @IsOptional()
@@ -45,12 +45,6 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   APISIX_CREDENTIAL_HEADER?: string;
-
-  // Parsed as a string ('true'/'false') to avoid implicit boolean coercion
-  // (Boolean('false') === true). The effective flag is computed below.
-  @IsOptional()
-  @IsString()
-  ENFORCE_GATEWAY?: string;
 
   @IsOptional()
   @IsIn(['public', 'testnet'])
@@ -87,13 +81,11 @@ export function validateEnv(config: Record<string, unknown>) {
     );
   }
 
-  const enforce =
-    String(config.ENFORCE_GATEWAY ?? 'true').toLowerCase() !== 'false';
-
-  if (enforce && !validated.APISIX_GATEWAY_SECRET) {
+  if (!validated.APISIX_GATEWAY_SECRET) {
     throw new Error(
-      'APISIX_GATEWAY_SECRET is required when ENFORCE_GATEWAY is enabled. ' +
-        'Set a shared secret that APISIX injects, or set ENFORCE_GATEWAY=false for local dev.',
+      'APISIX_GATEWAY_SECRET is required: the service only trusts requests that ' +
+        'carry the shared secret APISIX injects. Set it to match the dev platform ' +
+        "(COSMOS_GATEWAY_SECRET) and the gateway route's X-Gateway-Secret.",
     );
   }
 

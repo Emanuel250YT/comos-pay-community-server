@@ -4,11 +4,10 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { AppConfig } from '../../config/configuration';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
 
@@ -16,34 +15,28 @@ import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
  * Authorizes a request against the API key's granted scopes.
  *
  * API keys are a permission system independent from the developer dashboard:
- * each key carries a role + a set of scopes (e.g. `read`, `write`) that APISIX
- * forwards downstream (X-Consumer-Role / X-Consumer-Permissions). A handler
- * declares what it needs with @RequirePermissions(...). The rules:
+ * each key carries a role + a set of scopes (e.g. `payments:read`,
+ * `payments:write`) that APISIX forwards downstream (X-Consumer-Role /
+ * X-Consumer-Permissions). A handler declares what it needs with
+ * @RequirePermissions(...). The rules:
  *
- *   - No @RequirePermissions on the handler → no scope check (auth still done by
- *     ApisixGuard).
+ *   - @Public() route → skipped.
+ *   - No @RequirePermissions on the handler → no scope check.
+ *   - A scoped route reached without an authenticated consumer → denied (fail
+ *     closed). In practice ApisixGuard already rejects these first.
  *   - `admin` role → always allowed (full access).
  *   - otherwise → the key must hold every required scope.
  *
- * Runs after ApisixGuard (which has already proven the request came from the
- * gateway and carries a consumer). Disabled entirely when ENFORCE_GATEWAY=false
- * so local development without the gateway isn't blocked.
+ * Always enforced — there is no opt-out flag. Runs after ApisixGuard, which has
+ * already proven the request came from the gateway and carries a consumer.
  */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   private readonly logger = new Logger(PermissionsGuard.name);
 
-  constructor(
-    private readonly reflector: Reflector,
-    private readonly config: ConfigService<AppConfig, true>,
-  ) {}
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const apisix = this.config.get('apisix', { infer: true });
-    if (!apisix.enforce) {
-      return true;
-    }
-
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -63,12 +56,21 @@ export class PermissionsGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const consumer = request.gatewayConsumer;
 
+    // A scoped route reached without an authenticated consumer is denied (fail
+    // closed). ApisixGuard normally rejects these first; this is defense in depth.
+    if (!consumer) {
+      this.logger.warn(
+        `Rejected ${request.method} ${request.url}: no authenticated consumer for a scoped route`,
+      );
+      throw new UnauthorizedException('No authenticated consumer');
+    }
+
     // admin keys have full access.
-    if (consumer?.role === 'admin') {
+    if (consumer.role === 'admin') {
       return true;
     }
 
-    const granted = new Set(consumer?.permissions ?? []);
+    const granted = new Set(consumer.permissions ?? []);
     const missing = required.filter((scope) => !granted.has(scope));
     if (missing.length > 0) {
       this.logger.warn(

@@ -25,8 +25,9 @@ A request is accepted only when **both** conditions hold (see
    present, proving the key was authenticated upstream.
 
 Routes can opt out with `@Public()` (used by the health probes the orchestrator
-hits directly). Local development can disable enforcement entirely with
-`ENFORCE_GATEWAY=false`.
+hits directly). Enforcement is always on — there is no opt-out flag. For local
+development, run behind APISIX or send `X-Gateway-Secret` + the `X-Consumer-*`
+headers yourself.
 
 The pipeline:
 

@@ -25,8 +25,9 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
  *   2. It carries a consumer identity (X-Consumer-Username), proving APISIX's
  *      `key-auth` plugin already authenticated the caller's API key.
  *
- * Routes annotated with @Public() skip this check. When ENFORCE_GATEWAY=false
- * the guard is disabled entirely (local development only).
+ * Routes annotated with @Public() skip this check. Enforcement is always on:
+ * every non-public route must arrive through the gateway (valid X-Gateway-Secret
+ * + an authenticated consumer). There is no opt-out flag.
  */
 @Injectable()
 export class ApisixGuard implements CanActivate {
@@ -43,13 +44,6 @@ export class ApisixGuard implements CanActivate {
   }
 
   canActivate(context: ExecutionContext): boolean {
-    const apisix = this.config.get('apisix', { infer: true });
-
-    // Disabled for local dev — nothing to enforce.
-    if (!apisix.enforce) {
-      return true;
-    }
-
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -58,6 +52,7 @@ export class ApisixGuard implements CanActivate {
       return true;
     }
 
+    const apisix = this.config.get('apisix', { infer: true });
     const request = context.switchToHttp().getRequest<Request>();
 
     // 1. Verify the gateway shared secret (constant-time).
@@ -81,8 +76,8 @@ export class ApisixGuard implements CanActivate {
 
   private hasValidSecret(request: Request, headerName: string): boolean {
     if (this.secretBuffer.length === 0) {
-      // Should be impossible: env validation blocks boot when enforcing without
-      // a secret. Fail closed rather than accidentally trusting everything.
+      // Should be impossible: env validation requires APISIX_GATEWAY_SECRET at
+      // boot. Fail closed rather than accidentally trusting everything.
       throw new ServiceUnavailableException('Gateway secret not configured');
     }
 
