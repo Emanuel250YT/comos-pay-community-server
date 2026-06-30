@@ -35,6 +35,7 @@ export class BankAccountsService {
       local.id,
       receiverId,
     );
+    this.receivers.assertEnabled(receiver);
     const created = await this.blindpay.post<BlindpayObject>(
       this.blindpay.instancePath(
         `/customers/${receiver.blindpayId}/bank-accounts`,

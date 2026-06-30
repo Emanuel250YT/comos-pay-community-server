@@ -36,6 +36,7 @@ export class WalletsService {
       local.id,
       receiverId,
     );
+    this.receivers.assertEnabled(receiver);
     const created = await this.blindpay.post<BlindpayObject>(
       this.blindpay.instancePath(
         `/customers/${receiver.blindpayId}/blockchain-wallets`,

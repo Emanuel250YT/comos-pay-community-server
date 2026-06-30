@@ -12,8 +12,10 @@ import { PrismaModule } from './prisma/prisma.module';
 import { StellarModule } from './stellar/stellar.module';
 import { HealthModule } from './health/health.module';
 import { PaymentIntentsModule } from './payment-intents/payment-intents.module';
+import { SwapsModule } from './swaps/swaps.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { AdminModule } from './admin/admin.module';
 import { ProductsModule } from './products/products.module';
 import { CustomersModule } from './customers/customers.module';
 import { BlindpayModule } from './blindpay/blindpay.module';
@@ -35,8 +37,10 @@ import { OfframpModule } from './offramp/offramp.module';
     StellarModule,
     HealthModule,
     PaymentIntentsModule,
+    SwapsModule,
     WebhooksModule,
     AnalyticsModule,
+    AdminModule,
     ProductsModule,
     CustomersModule,
     // BlindPay rails: onramp / offramp / KYC. BlindpayModule is global and hosts

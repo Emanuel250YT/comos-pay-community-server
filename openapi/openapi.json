@@ -447,6 +447,197 @@
         ]
       }
     },
+    "/v1/swaps/quote": {
+      "post": {
+        "operationId": "SwapsController_quote_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteSwapDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapQuoteEntity"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Quote a swap (Horizon strict-send path search + fee/slippage); persists nothing",
+        "tags": [
+          "swaps"
+        ]
+      }
+    },
+    "/v1/swaps": {
+      "post": {
+        "operationId": "SwapsController_create_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSwapDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapEntity"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create a swap → unsigned XDR + SEP-7 tx URI + QR for the wallet to sign",
+        "tags": [
+          "swaps"
+        ]
+      },
+      "get": {
+        "operationId": "SwapsController_findAll_v1",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "SUBMITTED",
+                "SUCCEEDED",
+                "FAILED",
+                "EXPIRED"
+              ]
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapListEntity"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List the consumer's swaps",
+        "tags": [
+          "swaps"
+        ]
+      }
+    },
+    "/v1/swaps/{id}": {
+      "get": {
+        "operationId": "SwapsController_findOne_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapEntity"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get a swap by id",
+        "tags": [
+          "swaps"
+        ]
+      }
+    },
+    "/v1/swaps/{id}/submit": {
+      "post": {
+        "operationId": "SwapsController_submit_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitSwapDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwapSubmitResultEntity"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Relay the signed swap transaction to the network (hash-checked); finalizes status",
+        "tags": [
+          "swaps"
+        ]
+      }
+    },
     "/v1/webhooks": {
       "post": {
         "operationId": "WebhooksController_create_v1",
@@ -2575,6 +2766,499 @@
           "deleted"
         ]
       },
+      "QuoteSwapDto": {
+        "type": "object",
+        "properties": {
+          "sourceAssetCode": {
+            "type": "string",
+            "description": "Source asset code (the asset being sold). Native if omitted.",
+            "example": "XLM"
+          },
+          "sourceAssetIssuer": {
+            "type": "string",
+            "description": "Issuer account for a non-native source asset.",
+            "example": "GCRCUE2C5TBNIPYHMEP7NK5RWTT2WBSZ75CMARH7GDOHDDCQH3XANFOB"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Gross amount of the source asset to swap (decimal, ≤ 7 places). The platform fee is deducted from this and the remainder is routed.",
+            "example": "100"
+          },
+          "destAssetCode": {
+            "type": "string",
+            "description": "Destination asset code (the asset being bought).",
+            "example": "USDC"
+          },
+          "destAssetIssuer": {
+            "type": "string",
+            "description": "Issuer account for the destination asset (required unless it is native).",
+            "example": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTR6F3DSZL5A3W4G4M4N4A5U4QY3T6"
+          },
+          "slippageBps": {
+            "type": "number",
+            "description": "Slippage tolerance in basis points (50 = 0.5%) used to derive the on-chain minimum received. Defaults to the service setting; capped by it.",
+            "example": 50
+          }
+        },
+        "required": [
+          "amount",
+          "destAssetCode"
+        ]
+      },
+      "SwapAssetAmount": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "string",
+            "example": "native",
+            "description": "Asset code, or \"native\"."
+          },
+          "issuer": {
+            "type": "object",
+            "nullable": true,
+            "example": null
+          },
+          "amount": {
+            "type": "string",
+            "example": "100"
+          }
+        },
+        "required": [
+          "asset",
+          "issuer",
+          "amount"
+        ]
+      },
+      "SwapFeeBreakdown": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "string",
+            "example": "native"
+          },
+          "issuer": {
+            "type": "object",
+            "nullable": true,
+            "example": null
+          },
+          "amount": {
+            "type": "string",
+            "example": "0.5"
+          },
+          "bps": {
+            "type": "number",
+            "example": 50,
+            "description": "Fee in basis points (50 = 0.5%)."
+          },
+          "wallet": {
+            "type": "object",
+            "nullable": true,
+            "example": "GBFEE...WALLET",
+            "description": "Fee collector account (null when the fee is disabled)."
+          }
+        },
+        "required": [
+          "asset",
+          "issuer",
+          "amount",
+          "bps",
+          "wallet"
+        ]
+      },
+      "SwapDestinationQuote": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "string",
+            "example": "USDC"
+          },
+          "issuer": {
+            "type": "object",
+            "nullable": true,
+            "example": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTR6F3DSZL5A3W4G4M4N4A5U4QY3T6"
+          },
+          "estimated": {
+            "type": "string",
+            "example": "24.81",
+            "description": "Quoted amount received for the routed (post-fee) input."
+          },
+          "minimum": {
+            "type": "string",
+            "example": "24.68595",
+            "description": "On-chain minimum (destMin) after slippage — swap reverts below it."
+          },
+          "slippageBps": {
+            "type": "number",
+            "example": 50
+          }
+        },
+        "required": [
+          "asset",
+          "issuer",
+          "estimated",
+          "minimum",
+          "slippageBps"
+        ]
+      },
+      "SwapPathHop": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "yXLM",
+            "description": "Asset code, or \"native\"."
+          },
+          "issuer": {
+            "type": "object",
+            "nullable": true,
+            "example": "GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55",
+            "description": "Issuer for a non-native hop (null for native)."
+          }
+        },
+        "required": [
+          "code",
+          "issuer"
+        ]
+      },
+      "SwapQuoteEntity": {
+        "type": "object",
+        "properties": {
+          "network": {
+            "type": "string",
+            "example": "testnet"
+          },
+          "source": {
+            "description": "Gross source input.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SwapAssetAmount"
+              }
+            ]
+          },
+          "fee": {
+            "$ref": "#/components/schemas/SwapFeeBreakdown"
+          },
+          "swap": {
+            "description": "Net amount routed (input − fee).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SwapAssetAmount"
+              }
+            ]
+          },
+          "destination": {
+            "$ref": "#/components/schemas/SwapDestinationQuote"
+          },
+          "path": {
+            "description": "Intermediate hops (may be empty).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SwapPathHop"
+            }
+          }
+        },
+        "required": [
+          "network",
+          "source",
+          "fee",
+          "swap",
+          "destination",
+          "path"
+        ]
+      },
+      "CreateSwapDto": {
+        "type": "object",
+        "properties": {
+          "sourceAssetCode": {
+            "type": "string",
+            "description": "Source asset code (the asset being sold). Native if omitted.",
+            "example": "XLM"
+          },
+          "sourceAssetIssuer": {
+            "type": "string",
+            "description": "Issuer account for a non-native source asset.",
+            "example": "GCRCUE2C5TBNIPYHMEP7NK5RWTT2WBSZ75CMARH7GDOHDDCQH3XANFOB"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Gross amount of the source asset to swap (decimal, ≤ 7 places). The platform fee is deducted from this and the remainder is routed.",
+            "example": "100"
+          },
+          "destAssetCode": {
+            "type": "string",
+            "description": "Destination asset code (the asset being bought).",
+            "example": "USDC"
+          },
+          "destAssetIssuer": {
+            "type": "string",
+            "description": "Issuer account for the destination asset (required unless it is native).",
+            "example": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTR6F3DSZL5A3W4G4M4N4A5U4QY3T6"
+          },
+          "slippageBps": {
+            "type": "number",
+            "description": "Slippage tolerance in basis points (50 = 0.5%) used to derive the on-chain minimum received. Defaults to the service setting; capped by it.",
+            "example": 50
+          },
+          "source": {
+            "type": "string",
+            "description": "Account paying for (and signing) the swap — the tx source.",
+            "example": "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Account credited the destination asset. Defaults to `source` (a self-swap). Must already trust a non-native destination asset.",
+            "example": "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Optional MEMO_ID (numeric uint64) echoed on-chain for reconciliation.",
+            "example": "123456789"
+          }
+        },
+        "required": [
+          "amount",
+          "destAssetCode",
+          "source"
+        ]
+      },
+      "SwapEntity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "clx9z8a1b0000abcd1234efgh"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SUBMITTED",
+              "SUCCEEDED",
+              "FAILED",
+              "EXPIRED"
+            ],
+            "example": "PENDING"
+          },
+          "network": {
+            "type": "string",
+            "example": "testnet"
+          },
+          "source": {
+            "type": "string",
+            "example": "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+          },
+          "destination": {
+            "type": "string",
+            "example": "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+          },
+          "sendAsset": {
+            "type": "string",
+            "example": "native"
+          },
+          "sendAssetIssuer": {
+            "type": "object",
+            "nullable": true,
+            "example": null
+          },
+          "sendAmount": {
+            "type": "string",
+            "example": "100",
+            "description": "Gross source amount."
+          },
+          "feeAmount": {
+            "type": "string",
+            "example": "0.5"
+          },
+          "feeBps": {
+            "type": "number",
+            "example": 50
+          },
+          "swapAmount": {
+            "type": "string",
+            "example": "99.5",
+            "description": "Amount routed through the DEX/AMM."
+          },
+          "destAsset": {
+            "type": "string",
+            "example": "USDC"
+          },
+          "destAssetIssuer": {
+            "type": "object",
+            "nullable": true,
+            "example": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTR6F3DSZL5A3W4G4M4N4A5U4QY3T6"
+          },
+          "destEstimated": {
+            "type": "string",
+            "example": "24.81"
+          },
+          "destMin": {
+            "type": "string",
+            "example": "24.68595"
+          },
+          "slippageBps": {
+            "type": "number",
+            "example": 50
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SwapPathHop"
+            }
+          },
+          "memo": {
+            "type": "object",
+            "nullable": true,
+            "example": null
+          },
+          "xdr": {
+            "type": "string",
+            "description": "Unsigned transaction envelope (base64 XDR) to sign.",
+            "example": "AAAAAgAAAABx…(base64 XDR)…AAAAAAAAAAA="
+          },
+          "uri": {
+            "type": "string",
+            "example": "web+stellar:tx?xdr=AAAAAgAAAABx…"
+          },
+          "txHash": {
+            "type": "string",
+            "description": "Deterministic transaction hash (verified on submit).",
+            "example": "3389e9f0...64hex"
+          },
+          "qr": {
+            "type": "string",
+            "example": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA…"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-06-29T12:34:56.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-06-29T12:34:56.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "network",
+          "source",
+          "destination",
+          "sendAsset",
+          "sendAssetIssuer",
+          "sendAmount",
+          "feeAmount",
+          "feeBps",
+          "swapAmount",
+          "destAsset",
+          "destAssetIssuer",
+          "destEstimated",
+          "destMin",
+          "slippageBps",
+          "path",
+          "memo",
+          "xdr",
+          "uri",
+          "txHash",
+          "qr",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "SwapListEntity": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SwapEntity"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 1
+          },
+          "take": {
+            "type": "number",
+            "example": 20
+          },
+          "skip": {
+            "type": "number",
+            "example": 0
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "take",
+          "skip"
+        ]
+      },
+      "SubmitSwapDto": {
+        "type": "object",
+        "properties": {
+          "signedXdr": {
+            "type": "string",
+            "description": "The signed transaction envelope (base64 XDR).",
+            "example": "AAAAAgAAAABx…(signed base64 XDR)…AAAAAAAAAAA="
+          }
+        },
+        "required": [
+          "signedXdr"
+        ]
+      },
+      "SwapSubmitResultEntity": {
+        "type": "object",
+        "properties": {
+          "submitted": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SUBMITTED",
+              "SUCCEEDED",
+              "FAILED",
+              "EXPIRED"
+            ],
+            "example": "SUCCEEDED"
+          },
+          "txHash": {
+            "type": "string",
+            "nullable": true,
+            "example": "3389e9f0...64hex",
+            "description": "The on-chain transaction hash once submitted."
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "Why submission failed, when `submitted` is false."
+          },
+          "resultCodes": {
+            "nullable": true,
+            "example": [
+              "op_under_dest_min"
+            ],
+            "description": "Horizon transaction/operation result codes on a rejection.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "swap": {
+            "$ref": "#/components/schemas/SwapEntity"
+          }
+        },
+        "required": [
+          "submitted",
+          "status",
+          "swap"
+        ]
+      },
       "CreateWebhookEndpointDto": {
         "type": "object",
         "properties": {
@@ -2605,7 +3289,11 @@
                 "PAYIN_COMPLETED",
                 "PAYOUT_CREATED",
                 "PAYOUT_UPDATED",
-                "PAYOUT_COMPLETED"
+                "PAYOUT_COMPLETED",
+                "SWAP_CREATED",
+                "SWAP_SUBMITTED",
+                "SWAP_SUCCEEDED",
+                "SWAP_FAILED"
               ]
             }
           }
@@ -2655,7 +3343,11 @@
                 "PAYIN_COMPLETED",
                 "PAYOUT_CREATED",
                 "PAYOUT_UPDATED",
-                "PAYOUT_COMPLETED"
+                "PAYOUT_COMPLETED",
+                "SWAP_CREATED",
+                "SWAP_SUBMITTED",
+                "SWAP_SUCCEEDED",
+                "SWAP_FAILED"
               ]
             }
           },
@@ -2727,7 +3419,11 @@
                 "PAYIN_COMPLETED",
                 "PAYOUT_CREATED",
                 "PAYOUT_UPDATED",
-                "PAYOUT_COMPLETED"
+                "PAYOUT_COMPLETED",
+                "SWAP_CREATED",
+                "SWAP_SUBMITTED",
+                "SWAP_SUCCEEDED",
+                "SWAP_FAILED"
               ]
             }
           },
@@ -2783,7 +3479,11 @@
                 "PAYIN_COMPLETED",
                 "PAYOUT_CREATED",
                 "PAYOUT_UPDATED",
-                "PAYOUT_COMPLETED"
+                "PAYOUT_COMPLETED",
+                "SWAP_CREATED",
+                "SWAP_SUBMITTED",
+                "SWAP_SUCCEEDED",
+                "SWAP_FAILED"
               ]
             }
           }
@@ -2856,7 +3556,11 @@
               "PAYIN_COMPLETED",
               "PAYOUT_CREATED",
               "PAYOUT_UPDATED",
-              "PAYOUT_COMPLETED"
+              "PAYOUT_COMPLETED",
+              "SWAP_CREATED",
+              "SWAP_SUBMITTED",
+              "SWAP_SUCCEEDED",
+              "SWAP_FAILED"
             ],
             "example": "PAYMENT_INTENT_SUCCEEDED"
           },

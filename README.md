@@ -57,13 +57,14 @@ src/
     interfaces/                   GatewayConsumer + Express Request augmentation
     validators/                   IsStellarAddress (StrKey-based)
   payment-intents/                Stellar payment intents (controller, service, DTO) — emits events
+  swaps/                          Stellar native swaps (path payments): quote, build XDR, submit
   webhooks/                       webhook endpoints CRUD + dispatcher (HMAC-signed, retried)
   blindpay/                       BlindPay core: HTTP client, Svix verify, sync + inbound webhook
   kyc/                            receivers (KYC/KYB), wallets, bank accounts, doc upload
   onramp/                         fiat → stablecoin: payin quotes, payins, virtual accounts
   offramp/                        stablecoin → fiat: payout quotes, payouts (client-signed)
   health/                         liveness/readiness probes (@Public)
-prisma/schema.prisma              Consumer, PaymentIntent, WebhookEndpoint, WebhookDelivery,
+prisma/schema.prisma              Consumer, PaymentIntent, Swap, WebhookEndpoint, WebhookDelivery,
                                   BlindpayReceiver, Blockchain/BankAccount/VirtualAccount, Payin, Payout
 test/                             e2e suite proving the gateway gate
 ```
@@ -81,6 +82,11 @@ All routes are versioned under `/v1` (URI versioning).
 | POST   | `/v1/payment-intents/:id/validate` | Validate a submitted tx, finalize status, fire event |
 | PATCH  | `/v1/payment-intents/:id` | Update status / txHash / reference           |
 | DELETE | `/v1/payment-intents/:id` | Delete an intent                             |
+| POST   | `/v1/swaps/quote`         | Quote a swap (Horizon path search + fee/slippage) |
+| POST   | `/v1/swaps`               | Create a swap → unsigned XDR + tx URI + QR   |
+| GET    | `/v1/swaps`               | List the consumer's swaps (`?status&take&skip`) |
+| GET    | `/v1/swaps/:id`           | Get one swap by id                           |
+| POST   | `/v1/swaps/:id/submit`    | Relay the signed swap tx, finalize status    |
 | POST   | `/v1/webhooks`            | Register a webhook endpoint (returns secret) |
 | GET    | `/v1/webhooks`            | List the consumer's endpoints                |
 | GET    | `/v1/webhooks/:id`        | Get an endpoint                              |
@@ -127,7 +133,8 @@ retries with linear backoff (`WEBHOOK_*` env).
 
 Event types: `PAYMENT_INTENT_CREATED`, `PAYMENT_INTENT_UPDATED`,
 `PAYMENT_INTENT_SUCCEEDED`, `PAYMENT_INTENT_FAILED`, `PAYMENT_INTENT_CANCELLED`,
-`PAYMENT_INTENT_DELETED`.
+`PAYMENT_INTENT_DELETED`, `SWAP_CREATED`, `SWAP_SUBMITTED`, `SWAP_SUCCEEDED`,
+`SWAP_FAILED` (plus the BlindPay `RECEIVER_UPDATED` / `PAYIN_*` / `PAYOUT_*`).
 
 Delivery is decoupled via NestJS `EventEmitter2` (`webhook.event`), so emitting a
 notification never blocks the API request that triggered it.
@@ -268,6 +275,93 @@ Response:
 Network/Horizon/fee/timeout are configured via `STELLAR_*` env vars
 (see `.env.example`). Defaults to **testnet** for safety — set
 `STELLAR_NETWORK=public` for mainnet (real funds).
+
+## Stellar native swaps (path payments)
+
+Stellar has no dedicated "swap" operation. Asset exchange is done with a
+**`PathPaymentStrictSend`**, which Horizon automatically routes through the best
+available combination of the **Stellar DEX order books** and **AMM liquidity
+pools**. Cosmos Pay wraps that into a swap flow that is, like payment intents,
+**completely non-custodial** — funds never pass through the service. It only:
+
+1. **Quotes** by querying Horizon's strict-send path search.
+2. **Builds** the unsigned transaction (an optional platform-fee payment + the
+   path payment) and returns its `xdr` + SEP-7 `tx` URI + QR.
+3. **Relays** the transaction the customer signs in their own wallet.
+
+```
+quote → build XDR → customer signs in wallet → POST /submit → Stellar executes
+```
+
+The network is dictated by the API key type (prod → public, dev → testnet), the
+same as payment intents, and every swap is **persisted** (`swap` table) and scoped
+to the calling consumer (`PENDING → SUBMITTED → SUCCEEDED/FAILED`).
+
+**Fee (per-organization, enforced server-side).** The commission is **the rate of
+the calling organization's plan**, injected by the gateway as a trusted header
+(`X-Plan-Swap-Fee-Bps`) that the dev platform derives from the org's plan. It is
+**never a request parameter**, and APISIX overwrites any client-supplied copy, so
+the rate cannot be bypassed or undercut. The fee is taken from the **source asset**
+and paid to the platform wallet (`STELLAR_SWAP_FEE_WALLET`) as a first payment
+operation; the **remainder** is routed through the swap. If a plan fee applies but
+no platform wallet is configured, swap creation fails with `503` (operator
+misconfiguration). `STELLAR_SWAP_FEE_BPS` is only a fallback for local dev without
+the gateway (and is itself disabled when no wallet is set).
+
+**Slippage.** The quote's estimate, reduced by `slippageBps` (default
+`STELLAR_SWAP_SLIPPAGE_BPS`, capped by `STELLAR_SWAP_MAX_SLIPPAGE_BPS`), becomes
+the path payment's on-chain `destMin` — so the swap **reverts** rather than
+delivering less than the caller agreed to accept.
+
+**Trustline.** A non-native destination asset must already be trusted by the
+destination account; the build step checks this and returns a clear error
+otherwise. (XLM needs no trustline.)
+
+**`POST /v1/swaps/quote`** — price only, nothing persisted (`swaps:read`).
+
+```jsonc
+// request — sell 100 XLM for USDC
+{
+  "amount": "100",                 // gross source amount (fee comes out of this)
+  "destAssetCode": "USDC",
+  "destAssetIssuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTR6F3DSZL5A3W4G4M4N4A5U4QY3T6",
+  "slippageBps": 50                // optional; defaults to the service setting
+  // sourceAssetCode / sourceAssetIssuer omitted → native XLM
+}
+// response
+{
+  "network": "public",
+  "source":      { "asset": "native", "issuer": null, "amount": "100" },
+  "fee":         { "asset": "native", "issuer": null, "amount": "0.5", "bps": 50, "wallet": "G..." },
+  "swap":        { "asset": "native", "issuer": null, "amount": "99.5" },
+  "destination": { "asset": "USDC", "issuer": "G...", "estimated": "24.81", "minimum": "24.68595", "slippageBps": 50 },
+  "path": []                       // intermediate hops chosen by the router (may be empty)
+}
+```
+
+**`POST /v1/swaps`** — build the signable transaction (`swaps:write`). Takes the
+same fields plus `source` (the paying/signing account); `destination` defaults to
+`source` (a self-swap) and an optional `memo` (MEMO_ID) is echoed on-chain.
+
+```jsonc
+// response → { id, status: "PENDING", network, sendAmount, feeAmount, swapAmount,
+//              destEstimated, destMin, path, xdr, uri: "web+stellar:tx?xdr=…", qr, txHash, … }
+```
+
+**`POST /v1/swaps/:id/submit`** — relay the signed envelope (`swaps:write`).
+
+```jsonc
+// request
+{ "signedXdr": "AAAAAgAAA…(signed base64 XDR)…" }
+// response
+{ "submitted": true, "status": "SUCCEEDED", "txHash": "…", "swap": { … } }
+// on a network rejection → { "submitted": false, "status": "FAILED", "reason": "…", "resultCodes": ["op_under_dest_min"], "swap": { … } }
+```
+
+The signed transaction's hash is verified against the one the service built before
+it is broadcast, so a caller can never have the service relay an arbitrary
+transaction. A swap fires `SWAP_CREATED` / `SWAP_SUBMITTED` / `SWAP_SUCCEEDED` /
+`SWAP_FAILED` webhook events through the same dispatcher.
 
 ## BlindPay — onramp / offramp / KYC (fiat ⇄ stablecoin)
 

@@ -29,6 +29,7 @@ model Consumer {
   webhookEndpoints WebhookEndpoint[]
   products         Product[]
   customers        Customer[]
+  swaps            Swap[]
 
   // BlindPay (onramp/offramp/KYC) resources mirrored from the provider.
   blindpayReceivers BlindpayReceiver[]
@@ -124,6 +125,12 @@ enum WebhookEventType {
   PAYOUT_CREATED
   PAYOUT_UPDATED
   PAYOUT_COMPLETED
+
+  // Stellar native swaps (path-payment based asset exchange).
+  SWAP_CREATED
+  SWAP_SUBMITTED
+  SWAP_SUCCEEDED
+  SWAP_FAILED
 }
 
 enum WebhookDeliveryStatus {
@@ -270,13 +277,24 @@ model BlindpayReceiver {
   type        String
   // 'light' | 'standard' | 'enhanced'.
   kycType     String?
-  // BlindPay KYC status, e.g. 'verifying' | 'approved' | 'rejected' | ...
+  // BlindPay KYC status. Receivers start as 'inactive' (created locally, not yet at
+  // BlindPay) until the terms-of-service are accepted and the receiver is enabled,
+  // at which point this becomes BlindPay's real status — see ReceiversService.
   kycStatus   String?
   email       String?
   name        String?
   country     String?
   externalId  String?
   reference   String? // optional merchant reference
+
+  // Last time a terms-of-service link was emailed for this receiver — rate limits the
+  // "email me the ToS" action to at most once per day.
+  tosSentAt   DateTime?
+
+  // Owner/admin kill-switch for this fiat account: when true the receiver cannot be
+  // used for onramp/offramp (quotes, payins, payouts, new wallets/bank accounts are
+  // refused) regardless of its BlindPay KYC status. Toggled by a platform owner/admin.
+  disabled    Boolean   @default(false)
 
   raw         Json?
 
@@ -430,4 +448,73 @@ model Payout {
   @@index([receiverId])
   @@index([status])
   @@map("payout")
+}
+
+// ---------------------------------------------------------------------------
+// Stellar native swaps (asset exchange via path payments).
+//
+// Stellar has no "swap" primitive — asset exchange is a `PathPaymentStrictSend`
+// operation that routes through the DEX order books and AMM liquidity pools to
+// the best available path. This service is **non-custodial**: it only quotes,
+// assembles the unsigned transaction (a platform fee payment + the path payment)
+// and submits the signed transaction the customer hands back. Funds never pass
+// through Cosmos Pay. Scoped to the APISIX consumer like every other resource.
+// ---------------------------------------------------------------------------
+enum SwapStatus {
+  PENDING // built, unsigned XDR handed to the customer
+  SUBMITTED // a signed tx was submitted to the network
+  SUCCEEDED // confirmed on the Stellar network
+  FAILED // rejected / errored on the network
+  EXPIRED // tx time bounds elapsed before submission
+}
+
+model Swap {
+  id          String     @id @default(cuid())
+  consumerId  String
+  consumer    Consumer   @relation(fields: [consumerId], references: [id], onDelete: Cascade)
+
+  network     String // 'public' | 'testnet'
+  // Account paying (and signing) the swap.
+  source      String
+  // Account credited the destination asset (defaults to `source` — a self-swap).
+  destination String
+
+  // Source side (asset sold). `sendAmount` is the gross input; the platform fee
+  // is deducted from it and `swapAmount` (= sendAmount - feeAmount) is routed.
+  sendAsset       String  @default("native") // asset code, or "native" for XLM
+  sendAssetIssuer String?
+  sendAmount      String
+  feeAmount       String
+  feeBps          Int
+  swapAmount      String
+
+  // Destination side (asset bought). `destEstimated` is the quote at build time;
+  // `destMin` is the slippage-protected minimum enforced on-chain (destMin).
+  destAsset       String  @default("native")
+  destAssetIssuer String?
+  destEstimated   String
+  destMin         String
+  slippageBps     Int
+  // Intermediate hops chosen by the path search: [{ code, issuer }] (or empty).
+  path            Json
+
+  // Optional MEMO_ID echoed on-chain for the merchant's own reconciliation.
+  memo        String?
+
+  status      SwapStatus @default(PENDING)
+  // Unsigned transaction envelope + its SEP-7 `tx` deep link. QR derived on read.
+  xdr         String
+  uri         String
+  // Deterministic transaction hash (computed at build, verified on submit).
+  txHash      String
+
+  expiresAt   DateTime?
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([consumerId])
+  @@index([status])
+  @@index([txHash])
+  @@map("swap")
 }

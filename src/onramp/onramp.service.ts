@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { GatewayConsumer } from '../common/interfaces/gateway-consumer.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { BlindpayClient } from '../blindpay/blindpay.client';
@@ -100,6 +104,16 @@ export class OnrampService {
     });
     if (!wallet) {
       throw new NotFoundException('Blockchain wallet not found');
+    }
+    // Block onramp for a disabled fiat account (the wallet's owning receiver).
+    const receiver = await this.prisma.blindpayReceiver.findUnique({
+      where: { id: wallet.receiverId },
+      select: { disabled: true },
+    });
+    if (receiver?.disabled) {
+      throw new ForbiddenException(
+        'This fiat account is disabled. Re-enable it to use onramp.',
+      );
     }
     return wallet.blindpayId;
   }

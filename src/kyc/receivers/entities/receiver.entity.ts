@@ -35,6 +35,12 @@ export class ReceiverEntity {
   @ApiPropertyOptional({ example: 'cust_001' })
   externalId!: string | null;
 
+  @ApiProperty({
+    example: false,
+    description: 'Owner/admin kill-switch: when true the account is blocked from onramp/offramp.',
+  })
+  disabled!: boolean;
+
   @ApiProperty({ example: '2026-06-28T12:00:00.000Z' })
   createdAt!: Date;
 
